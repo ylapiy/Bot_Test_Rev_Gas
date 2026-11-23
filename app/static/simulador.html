@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador do Chatbot</title>
+<style>
+  :root{
+    --bg:#eef1f4; --painel:#ffffff; --borda:#dde2e7; --texto:#1d2730; --suave:#66727e;
+    --zap-topo:#075e54; --zap-fundo:#e5ddd5; --zap-meu:#dcf8c6; --zap-bot:#ffffff; --acento:#128c7e;
+    --alerta:#b3261e; --aviso:#9a6700;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--texto);height:100vh;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;gap:14px;padding:10px 18px;background:#fff;border-bottom:1px solid var(--borda)}
+  header h1{font-size:16px;margin:0}
+  header .chips{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+  .chip{font-size:12px;padding:3px 8px;border-radius:999px;background:#f1f3f5;border:1px solid var(--borda);white-space:nowrap}
+  .chip.on{background:#e6f4ea;border-color:#b7dfc2}
+  .chip.off{background:#fff4e5;border-color:#f3d19c}
+  main{flex:1;display:grid;grid-template-columns:260px minmax(360px,460px) 1fr;gap:14px;padding:14px;min-height:0}
+  section{background:var(--painel);border:1px solid var(--borda);border-radius:10px;min-height:0;display:flex;flex-direction:column}
+  section h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--suave);margin:0;padding:12px 14px;border-bottom:1px solid var(--borda)}
+  .lado{padding:12px 14px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+  .perfil{border:1px solid var(--borda);border-radius:8px;padding:8px 10px;cursor:pointer;background:#fafbfc}
+  .perfil.ativo{border-color:var(--acento);background:#e8f5f3}
+  .perfil b{display:block;font-size:13px}.perfil small{color:var(--suave)}
+  button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--borda);background:#fff;padding:7px 10px}
+  button:hover{background:#f4f6f8}
+  button.prim{background:var(--acento);color:#fff;border-color:var(--acento)}
+  label{font-size:12px;color:var(--suave)}
+  input[type=text]{font:inherit;width:100%;padding:7px 9px;border:1px solid var(--borda);border-radius:8px}
+  /* chat */
+  .tel{overflow:hidden}
+  .tel .topo{background:var(--zap-topo);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
+  .tel .topo .av{width:34px;height:34px;border-radius:50%;background:#25d366;display:grid;place-items:center;font-weight:700}
+  .tel .topo small{display:block;opacity:.8;font-size:12px}
+  #chat{flex:1;overflow:auto;background:var(--zap-fundo);padding:14px 12px;display:flex;flex-direction:column;gap:6px}
+  .msg{max-width:85%;padding:7px 10px 6px;border-radius:8px;box-shadow:0 1px 0 rgba(0,0,0,.08);white-space:pre-wrap;word-wrap:break-word}
+  .msg.eu{align-self:flex-end;background:var(--zap-meu)}
+  .msg.bot{align-self:flex-start;background:var(--zap-bot)}
+  .msg.atendente{align-self:flex-start;background:#fff7d6;border-left:3px solid #e0b100}
+  .msg.sistema{align-self:center;background:#e1f3fb;font-size:12px;color:#36566a}
+  .msg .hora{display:block;text-align:right;font-size:11px;color:#8696a0;margin-top:2px}
+  .botoes{display:flex;flex-direction:column;gap:4px;align-self:flex-start;max-width:85%;width:260px}
+  .botoes button{background:#fff;color:#027eb5;border:none;box-shadow:0 1px 0 rgba(0,0,0,.08)}
+  .botoes button:disabled{color:#9aa5ad;cursor:default}
+  .banner{display:none;background:#fff4e5;color:var(--aviso);font-size:12px;padding:6px 12px;border-bottom:1px solid #f3d19c}
+  .entrada{display:flex;gap:8px;padding:10px;background:#f0f0f0}
+  .entrada input{flex:1;border-radius:20px;border:none;padding:10px 14px}
+  .entrada button{border-radius:50%;width:42px;height:42px;padding:0;background:var(--acento);color:#fff;border:none;font-size:18px}
+  /* técnicas */
+  .abas{display:flex;gap:4px;padding:8px 10px 0;border-bottom:1px solid var(--borda)}
+  .abas button{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--suave);padding:8px 10px}
+  .abas button.ativa{color:var(--texto);border-bottom-color:var(--acento);font-weight:600}
+  #painel{flex:1;overflow:auto;padding:12px 14px}
+  .legenda{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+  .t{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff;white-space:nowrap}
+  .t.inativa{opacity:.25}
+  .etapa{border:1px solid var(--borda);border-radius:8px;margin-bottom:6px;background:#fbfcfd}
+  .etapa summary{cursor:pointer;padding:7px 10px;display:flex;gap:8px;align-items:center;list-style:none}
+  .etapa summary::-webkit-details-marker{display:none}
+  .etapa summary span.ms{margin-left:auto;color:var(--suave);font-size:12px}
+  .etapa pre{margin:0;padding:8px 10px;border-top:1px solid var(--borda);font-size:12px;white-space:pre-wrap;word-break:break-word;background:#fff;max-height:280px;overflow:auto}
+  .vazio{color:var(--suave);font-size:13px}
+  .sand{border:1px solid var(--borda);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:12px}
+  .sand pre{white-space:pre-wrap;margin:6px 0 0}
+  @media (max-width:1100px){main{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔥 Simulador do Chatbot</h1>
+  <span class="chip">sem WhatsApp — mesmas regras do bot real</span>
+  <div class="chips" id="chips"></div>
+  <a href="/atendente" target="_blank"><button>Painel do atendente ↗</button></a>
+</header>
+<main>
+  <section>
+    <h2>Quem está conversando</h2>
+    <div class="lado">
+      <div id="perfis"></div>
+      <div>
+        <label>Outro telefone (55 + DDD + número)</label>
+        <input type="text" id="telLivre" placeholder="5511912345678">
+        <button style="margin-top:6px;width:100%" onclick="usarTelefone()">Usar este número</button>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--borda);width:100%">
+      <button onclick="novaConversa()">🧹 Nova conversa (apaga memória)</button>
+      <button onclick="avancarPedido()">🛵 Simular central: avançar status do pedido</button>
+      <button onclick="enviarLocalizacao()">📍 Enviar localização (exemplo)</button>
+      <button onclick="enviarMidia()">🎤 Enviar áudio (exemplo)</button>
+      <button onclick="resetarDemo()">♻️ Resetar dados de demonstração</button>
+      <p id="dicaAtendimento" class="vazio" style="margin:4px 0 0">Dica: experimente <i>"meu pedido chegou?"</i>, <i>"e o de 45?"</i>, <i>"o de sempre"</i>,
+        <i>"tá com cheiro de gás"</i>, <i>"faz por 100?"</i>, <i>"quanto gastei esse ano?"</i>.</p>
+    </div>
+  </section>
+
+  <section class="tel">
+    <div class="topo"><div class="av">G</div><div><b id="nomeBot">Assistente</b><small id="sub">online</small></div></div>
+    <div class="banner" id="banner">👤 Conversa com atendente humano — o bot está em silêncio. Responda pelo painel do atendente.</div>
+    <div id="chat"></div>
+    <form class="entrada" onsubmit="enviar(event)">
+      <input id="txt" autocomplete="off" placeholder="Digite uma mensagem">
+      <button title="Enviar">➤</button>
+    </form>
+  </section>
+
+  <section>
+    <div class="abas">
+      <button class="ativa" id="abaT" onclick="aba('t')">Técnicas aplicadas (último turno)</button>
+      <button id="abaS" onclick="aba('s')">Saída WhatsApp (sandbox)</button>
+    </div>
+    <div id="painel"><p class="vazio">Envie uma mensagem para ver, passo a passo, cada técnica do bot em ação.</p></div>
+  </section>
+</main>
+
+<script>
+const CORES = {
+  "Conversation Memory":"#6d4c41","Guardrails":"#b3261e","Query Rewriting":"#7b1fa2","Intent Classification":"#1565c0",
+  "Entity Extraction":"#00838f","Tool Calling":"#2e7d32","Text-to-SQL controlado":"#ef6c00","RAG híbrido":"#5e35b1",
+  "Reranking":"#ad1457","Agentic RAG":"#37474f","Human Handoff":"#c62828"
+};
+let usuario = null, perfis = [], ultimoEvento = 0, ultimoRastreio = null, abaAtual = 't', senha = sessionStorage.getItem('senhaPainel') || '';
+
+function h(s){return String(s ?? '').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function zap(s){ // formatação do WhatsApp
+  return h(s).replace(/\*([^*\n]+)\*/g,'<b>$1</b>').replace(/(^|\s)_([^_\n]+)_/g,'$1<i>$2</i>').replace(/~([^~\n]+)~/g,'<s>$1</s>')
+             .replace(/(https?:\/\/[^\s<]+)/g,'<a href="$1" target="_blank">$1</a>');
+}
+function hora(){return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+
+async function api(url, corpo){
+  const op = {headers:{'Content-Type':'application/json'}};
+  if (senha) op.headers['X-Painel-Senha'] = senha;
+  if (corpo !== undefined){op.method='POST'; op.body=JSON.stringify(corpo)}
+  const r = await fetch(url, op);
+  if (r.status === 401){ senha = prompt('Simulador acessado de fora do servidor. Senha do painel:') || ''; sessionStorage.setItem('senhaPainel', senha); return api(url, corpo); }
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.erro || r.statusText);
+  return j;
+}
+
+function bolha(classe, texto){
+  const d = document.createElement('div'); d.className = 'msg ' + classe;
+  d.innerHTML = zap(texto) + `<span class="hora">${hora()}</span>`;
+  document.getElementById('chat').appendChild(d); rolar(); return d;
+}
+function botoes(lista){
+  if (!lista || !lista.length) return;
+  const box = document.createElement('div'); box.className = 'botoes';
+  lista.forEach(b => {
+    const bt = document.createElement('button'); bt.textContent = b.titulo;
+    bt.onclick = () => { box.querySelectorAll('button').forEach(x=>x.disabled=true); enviarBotao(b.id, b.titulo); };
+    box.appendChild(bt);
+  });
+  document.getElementById('chat').appendChild(box); rolar();
+}
+function rolar(){const c=document.getElementById('chat'); c.scrollTop=c.scrollHeight}
+
+async function carregarPerfis(){
+  const j = await api('/api/simulador/perfis'); perfis = j.perfis;
+  const c = j.config;
+  document.getElementById('nomeBot').textContent = c.empresa;
+  if (c.atendimento_modo !== 'legado') {
+    document.getElementById('dicaAtendimento').textContent = c.llm.ativo
+      ? 'Envie “quero dois botijões de 13 kg” para testar a interpretação ou digite menu para ver as opções.'
+      : 'Digite menu para ver as opções. Use continuar para repetir a pergunta ou sair para encerrar.';
+  }
+  document.getElementById('chips').innerHTML = [
+    `<span class="chip ${c.llm.ativo?'on':'off'}">IA: ${c.llm.ativo? c.llm.provedor+' ('+c.llm.modelo+')' : 'desligada'}</span>`,
+    `<span class="chip ${c.erp.modo==='mock'?'off':'on'}">ERP: ${c.erp.modo==='mock'?'demonstração':'RevGás real'}</span>`,
+    `<span class="chip">Busca vetorial: ${c.embeddings}</span>`,
+    `<span class="chip ${c.whatsapp.provedor==='nenhum'?'off':'on'}">WhatsApp: ${c.whatsapp.provedor}${c.whatsapp.provedor!=='nenhum'?(c.whatsapp.envio_real?' (envio real)':' (sandbox)'):''}</span>`
+  ].join('');
+  document.getElementById('perfis').innerHTML = perfis.map((p,i)=>
+    `<div class="perfil" id="p${i}" onclick="selecionar('${p.telefone}')"><b>${h(p.nome)}</b><small>${h(p.telefone)}<br>${h(p.descricao)}</small></div>`).join('');
+  selecionar(perfis[0].telefone);
+}
+
+async function selecionar(tel){
+  usuario = tel; ultimoEvento = 0;
+  perfis.forEach((p,i)=>document.getElementById('p'+i).classList.toggle('ativo', p.telefone===tel));
+  document.getElementById('sub').textContent = 'você está como ' + tel;
+  const chat = document.getElementById('chat'); chat.innerHTML='';
+  const j = await api('/api/simulador/historico?usuario_id='+encodeURIComponent(tel));
+  j.mensagens.forEach(m => bolha(m.papel==='cliente'?'eu':(m.papel==='atendente'?'atendente':'bot'), m.texto));
+  if (!j.mensagens.length) bolha('sistema', 'Nova conversa. Diga "oi" 👋');
+  setBanner(j.estado);
+  const ev = await api('/api/simulador/eventos?usuario_id='+encodeURIComponent(tel)+'&apos=0');
+  if (ev.eventos.length) ultimoEvento = ev.eventos[ev.eventos.length-1].id;
+}
+function usarTelefone(){const t=document.getElementById('telLivre').value.replace(/\D/g,''); if(t) selecionar(t)}
+function setBanner(estado){document.getElementById('banner').style.display = estado==='humano' ? 'block':'none'}
+
+async function mandar(corpo, textoExibido){
+  if (textoExibido) bolha('eu', textoExibido);
+  try{
+    const j = await api('/api/simulador/mensagem', {usuario_id: usuario, ...corpo});
+    j.respostas.forEach(r => { bolha('bot', r.texto); botoes(r.botoes); });
+    setBanner(j.estado);
+    ultimoRastreio = j; if (abaAtual==='t') desenharRastreio();
+  }catch(e){ bolha('sistema', '⚠️ ' + e.message); }
+}
+function enviar(ev){ev.preventDefault(); const i=document.getElementById('txt'); const t=i.value.trim(); if(!t) return; i.value=''; mandar({texto:t}, t)}
+function enviarBotao(id, titulo){ mandar({botao_id:id, botao_titulo:titulo}, titulo) }
+function enviarLocalizacao(){ mandar({localizacao:{latitude:-23.5505, longitude:-46.6333, endereco:'Rua Exemplo, 50', nome:''}}, '📍 Localização enviada') }
+function enviarMidia(){ mandar({texto:'', tipo:'audio'}, '🎤 Áudio (0:07)') }
+async function novaConversa(){ await api('/api/simulador/reset',{usuario_id:usuario}); selecionar(usuario) }
+async function resetarDemo(){ if(!confirm('Apagar todas as conversas e recriar os dados de demonstração?')) return; await api('/api/simulador/resetar-demo',{}); selecionar(usuario) }
+async function avancarPedido(){
+  try{ const j = await api('/api/simulador/avancar-pedido',{usuario_id:usuario}); if(!j.ok) bolha('sistema','⚠️ '+(j.erro||'não enviado')); }
+  catch(e){ bolha('sistema','⚠️ '+e.message) }
+}
+
+async function poll(){
+  if (!usuario) return;
+  try{
+    const ev = await api('/api/simulador/eventos?usuario_id='+encodeURIComponent(usuario)+'&apos='+ultimoEvento);
+    ev.eventos.forEach(e => { ultimoEvento = e.id; const t = e.payload.texto || '';
+      bolha(t.startsWith('*') && t.includes(':*') ? 'atendente' : 'bot', t); botoes(e.payload.botoes); });
+    if (ev.eventos.length){ const j = await api('/api/simulador/historico?usuario_id='+encodeURIComponent(usuario)); setBanner(j.estado); }
+  }catch(e){}
+  if (abaAtual==='s') desenharSandbox();
+}
+
+function aba(a){abaAtual=a; document.getElementById('abaT').classList.toggle('ativa',a==='t'); document.getElementById('abaS').classList.toggle('ativa',a==='s'); a==='t'?desenharRastreio():desenharSandbox()}
+function desenharRastreio(){
+  const p = document.getElementById('painel');
+  if (!ultimoRastreio){ p.innerHTML='<p class="vazio">Envie uma mensagem para ver cada técnica em ação.</p>'; return; }
+  const usadas = new Set(ultimoRastreio.rastreio.map(e=>e.tecnica));
+  let html = `<div class="legenda">${Object.keys(CORES).map(k=>`<span class="t ${usadas.has(k)?'':'inativa'}" style="background:${CORES[k]}">${k}</span>`).join('')}</div>`;
+  html += `<p class="vazio" style="margin:0 0 8px">Intenção: <b>${h(ultimoRastreio.intencao||'-')}</b> · ${ultimoRastreio.total_ms} ms · clique numa etapa para ver os detalhes</p>`;
+  html += ultimoRastreio.rastreio.map(e => `<details class="etapa"><summary><span class="t" style="background:${CORES[e.tecnica]||'#555'}">${h(e.tecnica)}</span>${h(e.etapa)}<span class="ms">${e.ms} ms</span></summary>`
+    + (e.detalhe!==null && e.detalhe!==undefined ? `<pre>${h(typeof e.detalhe==='string'?e.detalhe:JSON.stringify(e.detalhe,null,2))}</pre>` : '') + `</details>`).join('');
+  p.innerHTML = html;
+}
+async function desenharSandbox(){
+  const p = document.getElementById('painel');
+  const j = await api('/api/simulador/whatsapp-sandbox');
+  p.innerHTML = '<p class="vazio">Mensagens que o bot <b>enviaria</b> pela API do WhatsApp (modo sandbox: WHATSAPP_ENVIO_REAL=false). '
+    + 'Use <code>python scripts/simular_webhook.py</code> para mandar mensagens no formato exato da Meta.</p>'
+    + (j.mensagens.length ? j.mensagens.map(m=>`<div class="sand"><b>para ${h(m.usuario_id)}</b> · ${h(m.criado_em)}<pre>${h(JSON.stringify(m.payload,null,2))}</pre></div>`).join('')
+       : '<p class="vazio">Nenhuma mensagem ainda.</p>');
+}
+
+carregarPerfis(); setInterval(poll, 2000);
+</script>
+</body>
+</html>
