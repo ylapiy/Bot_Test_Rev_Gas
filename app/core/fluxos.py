@@ -11,7 +11,7 @@ from datetime import datetime
 from app.config import config
 from app.core import ferramentas
 from app.core.turno import NOMES_PRODUTO, Turno
-from app.erp import obter_erp
+from app.erp import ErroERP, obter_erp
 from app.util.documentos import mascarar_documento, so_digitos, variantes_telefone_br
 from app.util.texto import formatar_moeda as moeda, normalizar
 
@@ -79,11 +79,12 @@ def identificar_por_telefone(t: Turno) -> None:
     conv = t.conv
     if conv.cliente or conv.slots.get("telefone_consultado") or conv.canal == "cli_anonimo":
         return
-    conv.slots["telefone_consultado"] = True
     try:
         c = obter_erp().buscar_cliente_por_telefone(conv.usuario_id)
-    except Exception:  # noqa: BLE001
-        c = None
+    except ErroERP:
+        t.rastreio.add("Conversation Memory", "consulta de telefone indisponível no ERP", None)
+        return
+    conv.slots["telefone_consultado"] = True
     if c:
         carregar_cliente(t, c, 2, "telefone do WhatsApp = telefone do cadastro")
     else:
@@ -264,6 +265,11 @@ def avancar_pedido(t: Turno) -> None:
                         [("falar_atendente", "Falar com comercial"), ("alt_itens", "Ajustar quantidade")])
             return
         est = ferramentas.executar("consultar_estoque", {"produto_codigo": cod, "filial_id": f["filial_id"]}, t.ctx)
+        if est.get("erro"):
+            t.ctx.pedidos_handoff.append({"motivo": "Falha ao consultar estoque no ERP", "prioridade": "alta"})
+            conv.set_fluxo(None)
+            t.responder("Não consegui consultar o estoque agora. Chamei um atendente para confirmar a disponibilidade.")
+            return
         disp = (est.get("estoque") or [{}])[0].get("quantidade", 0) if isinstance(est, dict) else 0
         if disp < qtd:
             f["etapa"], f["itens_anteriores"], f["itens"] = "itens", f["itens"], []
@@ -277,9 +283,14 @@ def avancar_pedido(t: Turno) -> None:
     if not f.get("forma_pagamento"):
         f["etapa"] = "pagamento"
         botoes = list(BOTOES_PAGAMENTO)
-        if cli.get("tipo") == "PJ":
+        if cli.get("tipo") == "PJ" and config.erp_modo == "mock":
             botoes = [("pag_pix", "Pix"), ("pag_boleto", "Boleto"), ("pag_cartao", "Cartão")]
         t.responder("Como prefere pagar? (o pagamento é na entrega)", botoes)
+        return
+    if f["forma_pagamento"] == "boleto" and config.erp_modo == "revgas":
+        t.ctx.pedidos_handoff.append({"motivo": "Cliente solicitou aprovação de venda com boleto"})
+        conv.set_fluxo(None)
+        t.responder("Chamei um atendente para verificar a aprovação do pagamento por boleto.")
         return
     if f["forma_pagamento"] in regras.get("formas_pagamento_somente_pj", []) and cli.get("tipo") != "PJ":
         f["forma_pagamento"] = None
@@ -297,7 +308,9 @@ def _precificar(t: Turno, f: dict) -> tuple[list[dict], float, float]:
     linhas, total = [], 0.0
     for it in f["itens"]:
         p = ferramentas.executar("consultar_preco", {"produto_codigo": it["produto_codigo"], "filial_id": f["filial_id"]}, t.ctx)
-        preco = float(p.get("preco") or 0)
+        if p.get("erro") or p.get("preco") is None:
+            raise ErroERP(f"Preço indisponível para {NOMES_PRODUTO.get(it['produto_codigo'], it['produto_codigo'])}.")
+        preco = float(p["preco"])
         sub = preco * int(it["quantidade"])
         total += sub
         linhas.append({**it, "descricao": p.get("produto_nome") or NOMES_PRODUTO.get(it["produto_codigo"]),
@@ -337,13 +350,20 @@ def detalhes_pedido(pedido: dict) -> str:
 
 def mostrar_resumo(t: Turno) -> None:
     f = t.conv.fluxo
-    linhas, taxa, total = _precificar(t, f)
+    try:
+        linhas, taxa, total = _precificar(t, f)
+    except ErroERP as exc:
+        t.ctx.pedidos_handoff.append({"motivo": str(exc), "prioridade": "alta"})
+        t.conv.set_fluxo(None)
+        t.responder(f"{exc} Chamei um atendente para confirmar o valor.")
+        return
     t.ctx.evidencias.add(f"{total:.2f}")
     end = (f.get("endereco_sugerido") or {}).get("texto") if f.get("endereco_id") else _texto_endereco(f.get("endereco_novo") or {})
     detalhes = detalhes_pedido({**f, "itens": linhas, "valor_produtos": sum(li["subtotal"] for li in linhas),
                                 "taxa_entrega": taxa, "valor_total": total, "endereco_texto": end})
     f["etapa"] = "confirmacao"
     f["total"] = total
+    f["itens_cotados"] = linhas
     t.responder(f"📝 *Resumo do pedido*\n{detalhes}\n"
                 f"🛵 Entrega em até {f.get('prazo_min', config.prazo_entrega_min)} minutos\n\nPosso confirmar?",
                 [("confirmar_pedido", "Confirmar pedido"), ("alterar_pedido", "Alterar"), ("cancelar_fluxo", "Cancelar")])
@@ -573,6 +593,9 @@ def _criar_pedido(t: Turno) -> bool:
     conv, f = t.conv, t.conv.fluxo
     erp = obter_erp()
     cli = conv.cliente
+    if erp.endereco_avulso_na_venda and not f.get("itens_cotados"):
+        mostrar_resumo(t)
+        return True
     try:
         if cli.get("novo") or not cli.get("id"):
             cad = conv.slots.get("cadastro", {})
@@ -580,7 +603,7 @@ def _criar_pedido(t: Turno) -> bool:
             conv.slots["cliente"] = {k: novo.get(k) for k in ("id", "nome", "tipo", "documento")}
             conv.slots.pop("cadastro", None)
             t.rastreio.add("Tool Calling", "cadastrar_cliente (após confirmação)", {"cliente_id": novo.get("id")})
-        if not f.get("endereco_id"):
+        if not f.get("endereco_id") and not erp.endereco_avulso_na_venda:
             end = erp.cadastrar_endereco(conv.cliente["id"], f["endereco_novo"])
             f["endereco_id"] = end["id"]
             t.rastreio.add("Tool Calling", "cadastrar_endereco (após confirmação)", {"endereco_id": end["id"]})
@@ -591,12 +614,13 @@ def _criar_pedido(t: Turno) -> bool:
         conv.set_fluxo(None)
         return True
     r = ferramentas.executar("criar_pedido", {
-        "endereco_id": f["endereco_id"], "itens": [{"produto_codigo": i["produto_codigo"], "quantidade": i["quantidade"]} for i in f["itens"]],
+        "endereco_id": f.get("endereco_id"), "itens": f.get("itens_cotados") or f["itens"],
+        "endereco_avulso": f.get("endereco_novo") if erp.endereco_avulso_na_venda else None,
         "forma_pagamento": f["forma_pagamento"], "filial_id": f["filial_id"], "troco_para": f.get("troco_para") or None,
         "observacao": "Pedido via chatbot WhatsApp"}, t.ctx)
     if r.get("erro"):
         t.ctx.pedidos_handoff.append({"motivo": f"Falha ao gravar pedido no ERP: {r['erro']}", "prioridade": "alta"})
-        t.responder(f"Não consegui registrar o pedido no sistema ({r['erro']}). Já passei para um atendente concluir pra você. 🙏")
+        t.responder(f"Preciso que a equipe confira o pedido ({r['erro']}). Já chamei um atendente. 🙏")
         conv.set_fluxo(None)
         return True
     conv.slots["pedido_atual"] = r["numero"]

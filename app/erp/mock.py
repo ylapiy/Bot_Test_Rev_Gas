@@ -311,7 +311,7 @@ class ErpMock(ErpCliente):
         }
 
     def criar_pedido(self, cliente_id, endereco_id, itens, forma_pagamento, filial_id, troco_para=None,
-                     observacao="", canal="whatsapp") -> dict:
+                     observacao="", canal="whatsapp", *, endereco_avulso=None) -> dict:
         if not itens:
             raise ErroERP("Pedido sem itens.")
         with _lock:
@@ -392,9 +392,10 @@ class ErpMock(ErpCliente):
             params.append(status)
         return self._q(sql + " ORDER BY vencimento", params)
 
-    def segunda_via(self, titulo_numero: str) -> dict | None:
-        return self._q("SELECT numero, cliente_id, pedido_numero, valor, vencimento, status, linha_digitavel, link "
+    def segunda_via(self, titulo_numero: str, *, cliente_id=None) -> dict | None:
+        titulo = self._q("SELECT numero, cliente_id, pedido_numero, valor, vencimento, status, linha_digitavel, link "
                        "FROM titulos WHERE numero=?", (titulo_numero.upper(),), um=True)
+        return titulo if titulo and (cliente_id is None or str(titulo["cliente_id"]) == str(cliente_id)) else None
 
     # ------------------------------------------------------------------ trocas
     def abrir_troca(self, cliente_id, pedido_numero, produto_codigo, motivo) -> dict:

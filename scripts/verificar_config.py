@@ -19,7 +19,7 @@ def linha(simbolo: str, texto: str) -> None:
     print(f"  {simbolo} {texto}")
 
 
-def main() -> None:
+def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--online", action="store_true")
     a = ap.parse_args()
@@ -74,19 +74,54 @@ def main() -> None:
         linha(AVISO, "ERP_MODO=mock usa dados fictícios de demonstração.")
         if config.whatsapp_provedor == "evolution" and config.whatsapp_envio_real:
             linha(AVISO, "Evolution com envio real: solicitações vão para atendimento humano.")
-    else:
-        linha(OK if config.erp_base_url else ERRO, f"ERP_BASE_URL {'= ' + config.erp_base_url if config.erp_base_url else 'VAZIO'}")
-        linha(OK if config.erp_token or config.erp_usuario else ERRO, "Credencial do ERP " + ("preenchida" if config.erp_token or config.erp_usuario else "VAZIA"))
-        linha(AVISO, "Confira se config/erp_revgas.json foi ajustado com a documentação real da API do RevGás")
-        if a.online:
-            try:
-                from app.erp import obter_erp
+    elif config.erp_modo == "revgas":
+        from app.erp import ErroERP
+        from app.erp.revgas_http import ErpRevGasHttp, _dinheiro, _id
 
-                fs = obter_erp().listar_filiais()
-                linha(OK, f"ERP respondeu: {len(fs)} filial(is)")
-            except Exception as e:  # noqa: BLE001
-                linha(ERRO, f"ERP não respondeu: {e}")
+        try:
+            erp = ErpRevGasHttp()
+            linha(OK, "Chave RevGás preenchida.")
+            if not erp.filiais:
+                linha(ERRO, "Preencha filiais, bairros, IDs dos produtos e preços em config/erp_revgas.json.")
                 problemas += 1
+            if config.json_config("regras_comerciais.json").get("taxa_entrega", 0):
+                linha(ERRO, "A venda automática da RevGás requer taxa_entrega igual a zero.")
+                problemas += 1
+            for filial_id, filial in erp.filiais.items():
+                _id(filial_id)
+                if not filial.get("bairros") or not filial.get("produtos"):
+                    raise ErroERP(f"Informe bairros e produtos para o estabelecimento {filial_id}.")
+                for oferta in filial["produtos"].values():
+                    _id(oferta.get("id"))
+                    _dinheiro(oferta.get("preco"))
+            if a.online:
+                filiais = erp.listar_filiais()
+                ids = {str(f["id"]) for f in filiais}
+                linha(OK, "RevGás autenticada. IDs de estabelecimentos: " + ", ".join(sorted(ids)))
+                if set(erp.filiais) - ids:
+                    linha(ERRO, "Há estabelecimentos configurados que a chave RevGás não retornou.")
+                    problemas += 1
+                for fid in sorted(ids):
+                    if erp.filiais and fid not in erp.filiais:
+                        continue
+                    produtos = erp._produtos_filial(fid)
+                    configurados = erp.filiais.get(fid, {}).get("produtos", {})
+                    if not configurados:
+                        linha(AVISO, f"Produtos do estabelecimento {fid}: " + ", ".join(
+                            f"{p['id']} {p.get('description', '')}" for p in produtos.values()))
+                    for codigo, oferta in configurados.items():
+                        if str(oferta["id"]) not in produtos:
+                            linha(ERRO, f"{codigo}: produto {oferta['id']} indisponível no estabelecimento {fid}.")
+                            problemas += 1
+                    pagamentos = list(erp._listar("/payment-types", establishment_id=int(fid), status="ACTIVE"))
+                    linha(OK, f"Estabelecimento {fid}, pagamentos ativos: " + ", ".join(
+                        str(p.get("payment_type")) for p in pagamentos))
+        except (ErroERP, ValueError, OSError, TypeError, AttributeError) as e:
+            linha(ERRO, f"RevGás: {e}")
+            problemas += 1
+    else:
+        linha(ERRO, "ERP_MODO precisa ser mock ou revgas.")
+        problemas += 1
     if not config.erp_webhook_token:
         linha(AVISO, "ERP_WEBHOOK_TOKEN vazio deixa os avisos automáticos de status desligados.")
 
@@ -113,6 +148,8 @@ def main() -> None:
 
     print("\n" + (f"{OK} Tudo certo para o modo escolhido." if not problemas else f"{ERRO} {problemas} problema(s) para resolver acima."))
 
+    return int(bool(problemas))
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

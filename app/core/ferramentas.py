@@ -59,7 +59,7 @@ class Ferramenta:
 
 # ======================================================================= funções
 def _filial_padrao(ctx: Contexto, filial_id=None):
-    return filial_id or ctx.conv.slots.get("filial_id") or 1
+    return filial_id or ctx.conv.slots.get("filial_id") or (1 if config.erp_modo == "mock" else None)
 
 
 def f_consultar_preco(a, ctx):
@@ -108,7 +108,7 @@ def f_consultar_financeiro(a, ctx):
 
 
 def f_segunda_via(a, ctx):
-    t = obter_erp().segunda_via(a["titulo_numero"])
+    t = obter_erp().segunda_via(a["titulo_numero"], cliente_id=ctx.cliente_id)
     if not t or str(t.get("cliente_id")) != str(ctx.cliente_id):
         return {"erro": "Título não encontrado para este cliente."}
     return t
@@ -204,7 +204,8 @@ def f_cancelar_pedido(a, ctx):
 
 def f_criar_pedido(a, ctx):
     return obter_erp().criar_pedido(ctx.cliente_id, a["endereco_id"], a["itens"], a["forma_pagamento"], a["filial_id"],
-                                    a.get("troco_para"), a.get("observacao", ""), ctx.conv.canal)
+                                    a.get("troco_para"), a.get("observacao", ""), ctx.conv.canal,
+                                    endereco_avulso=a.get("endereco_avulso"))
 
 
 S, I, N = {"type": "string"}, {"type": "integer"}, {"type": "number"}

@@ -58,9 +58,11 @@ class Config:
         self.telefone_plantao = _txt("TELEFONE_PLANTAO_EMERGENCIA")
 
         # ---------------- Pastas / bancos locais ----------------
+        self.erp_modo = _txt("ERP_MODO", "mock").lower()
         self.pasta_dados = _caminho("PASTA_DADOS", RAIZ / "data")
         self.pasta_dados.mkdir(parents=True, exist_ok=True)
-        self.bot_db = _caminho("BOT_DB_PATH", self.pasta_dados / "bot.db")
+        banco_bot = "bot-revgas.db" if self.erp_modo == "revgas" else "bot.db"
+        self.bot_db = _caminho("BOT_DB_PATH", self.pasta_dados / banco_bot)
         self.pasta_conhecimento = _caminho("PASTA_CONHECIMENTO", RAIZ / "knowledge")
         self.pasta_config = _caminho("PASTA_CONFIG", RAIZ / "config")
 
@@ -111,14 +113,9 @@ class Config:
 
         # ---------------- ERP ----------------
         # mock (dados de demonstração) | revgas (API HTTP real)
-        self.erp_modo = _txt("ERP_MODO", "mock").lower()
         self.erp_mock_db = _caminho("ERP_MOCK_DB_PATH", self.pasta_dados / "erp_mock.db")
-        self.erp_base_url = _txt("ERP_BASE_URL").rstrip("/")
-        self.erp_auth_tipo = _txt("ERP_AUTH_TIPO", "bearer").lower()  # bearer | apikey | basic
+        self.erp_base_url = _txt("ERP_BASE_URL", "https://api.revgas.com/v1").rstrip("/")
         self.erp_token = _txt("ERP_TOKEN")
-        self.erp_apikey_header = _txt("ERP_APIKEY_HEADER", "X-API-Key")
-        self.erp_usuario = _txt("ERP_USUARIO")
-        self.erp_senha = _txt("ERP_SENHA")
         self.erp_timeout = _int("ERP_TIMEOUT_SEGUNDOS", 15)
         self.erp_webhook_token = _txt("ERP_WEBHOOK_TOKEN")
 

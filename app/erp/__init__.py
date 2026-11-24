@@ -14,10 +14,12 @@ def obter_erp() -> ErpCliente:
             from app.erp.revgas_http import ErpRevGasHttp
 
             _instancia = ErpRevGasHttp()
-        else:
+        elif config.erp_modo == "mock":
             from app.erp.mock import ErpMock
 
             _instancia = ErpMock()
+        else:
+            raise ErroERP("ERP_MODO precisa ser mock ou revgas.")
     return _instancia
 
 

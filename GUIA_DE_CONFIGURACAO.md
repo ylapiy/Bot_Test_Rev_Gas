@@ -21,7 +21,7 @@ Onde se preenche:
 |---|---|
 | `.env` (cópia de `.env.example`) | chaves, senhas, endereços e ligar/desligar recursos |
 | `config/regras_comerciais.json` | regras que o bot é obrigado a seguir (taxa, limites, prazos, promoções) |
-| `config/erp_revgas.json` | "tradução" da API do RevGás (caminhos e nomes de campos) |
+| `config/erp_revgas.json` | IDs, bairros e preços por estabelecimento RevGás |
 | `config/sql_permissoes.json` | o que o Text-to-SQL pode consultar no banco |
 | `knowledge/*.md` | catálogo, políticas, garantia, FAQ, manual de segurança |
 
@@ -35,8 +35,8 @@ Onde se preenche:
 
 | # | Item | Quem normalmente tem | Bloqueia o quê |
 |---|---|---|---|
-| 1 | **Documentação da API do RevGás** (endpoints, exemplos de resposta, autenticação) + **URL e credencial de homologação** | fornecedor do RevGás / TI | Dados reais (preço, estoque, pedidos, boletos). Sem isso o bot roda só com o ERP de demonstração |
-| 2 | Confirmação de que a API permite: buscar cliente por **telefone** e por **CPF/CNPJ**, endereços, preço e estoque **por filial**, **criar pedido na central**, consultar/listar/cancelar pedido, títulos e **2ª via**, abrir troca | fornecedor do RevGás | Cada operação que faltar vira atendimento humano |
+| 1 | **Chave da API RevGás** e **conta de teste autorizada para vendas** | fornecedor do RevGás / TI | Validar acesso aos dados e gravação na central de vendas |
+| 2 | IDs dos produtos, **preços aprovados** e **bairros atendidos** por estabelecimento | operação da loja | Cotação e roteamento de entrega |
 | 3 | Se o RevGás/App Entrega consegue **chamar uma URL quando o status do pedido muda** (webhook) | fornecedor / App Entrega | Avisos automáticos "saiu para entrega" e "entregue" |
 | 4 | Acesso à conta **Meta Business** (Business Manager) com permissão de administrador | dono/marketing | API oficial do WhatsApp |
 | 5 | O **número de WhatsApp** que será usado no bot e onde ele está hoje (WhatsApp comum, WhatsApp Business no celular, outro provedor) | operação | API oficial do WhatsApp |
@@ -132,40 +132,32 @@ Regras para o bot responder bem:
 | `desconto_maximo_bot_percentual` | Deixe `0` (o bot não dá desconto) | `0` |
 
 ### Etapa 5 — ERP RevGás
-**5.1 No `.env`:**
-| Campo | O que colocar |
-|---|---|
-| `ERP_MODO` | `revgas` (só depois de preencher o 5.2) |
-| `ERP_BASE_URL` | URL base da API, ex.: `https://api.revgas.com.br/v1` (homologação primeiro!) |
-| `ERP_AUTH_TIPO` | `bearer` (token), `apikey` (chave em cabeçalho) ou `basic` (usuário/senha) |
-| `ERP_TOKEN` | Token/chave fornecido pelo RevGás |
-| `ERP_APIKEY_HEADER` | Nome do cabeçalho, se for `apikey` (ex.: `X-API-Key`) |
-| `ERP_USUARIO` / `ERP_SENHA` | Se for `basic` |
-| `ERP_WEBHOOK_TOKEN` | Uma senha que **vocês inventam** e configuram no RevGás/App Entrega para chamar `/webhooks/erp/status` |
 
-**5.2 Em `config/erp_revgas.json`** — com a documentação da API em mãos, para **cada operação**:
-1. Ajuste `metodo` e `caminho` (variáveis entre chaves, ex.: `/pedidos/{numero}`).
-2. Ajuste `query` (parâmetros na URL) e/ou `corpo` (JSON enviado).
-3. Diga onde está o resultado: `"lista": "data"` (se a lista vem em `{"data": [...]}`; use `""` se a resposta já é a lista) ou `"item": "resultado"`.
-4. Em `mapas`, para cada campo que o bot usa (à esquerda), escreva **onde ele está na resposta do RevGás** (à direita), com ponto para campos aninhados.
+1. No `.env` da instância, configure `ERP_MODO=revgas`, `ERP_BASE_URL=https://api.revgas.com/v1` e `ERP_TOKEN` com a chave fornecida pelo suporte da RevGás. A API recebe a chave diretamente em `Authorization`. [Autenticação da RevGás](https://revgas.stoplight.io/docs/revgas-api/en39g0vb0qwsb-autenticacao-e-permissao)
+2. Rode `python scripts/verificar_config.py --online` para conferir a chave, ver os IDs dos estabelecimentos e listar os produtos ativos. O diagnóstico usa consultas de leitura. A checagem de configuração fica pendente até que a tabela abaixo seja preenchida.
+3. Preencha `config/erp_revgas.json` com a área atendida e o preço unitário aprovado para cada código do bot. Os IDs e valores abaixo são exemplos de preenchimento.
 
-Exemplo — se o RevGás responder:
 ```json
-{"data": [{"codCliente": 77, "razaoSocial": "Maria Silva", "cpfCnpj": "52998224725", "fone": "5511999990001"}]}
+{
+  "filiais": {
+    "42": {
+      "bairros": ["Centro", "Vila Nova"],
+      "produtos": {
+        "P13": {"id": 101, "preco": 120.00},
+        "AGUA20": {"id": 205, "preco": 15.00}
+      }
+    }
+  }
+}
 ```
-o mapa do cliente fica:
-```json
-"cliente": {"id": "codCliente", "nome": "razaoSocial", "documento": "cpfCnpj", "telefone": "fone", "tipo": "tipoPessoa", "email": "email"}
-```
-5. Em `status_pedido`, traduza os status do RevGás para os do bot (`recebido`, `em_separacao`, `em_rota`, `entregue`, `cancelado`).
-6. Em `modelo_corpo_pedido` / `modelo_item_pedido`, monte o JSON que o RevGás espera para **criar pedido**.
-7. Em `bairros_por_filial`, liste os bairros atendidos por filial (se a API não fornecer).
-8. Teste: `python scripts/verificar_config.py --online` e converse no simulador.
 
-> Se algo da API não couber nesse modelo (SOAP, paginação, autenticação com renovação de token), nos avise — ajustamos o `app/erp/revgas_http.py`.
+Por padrão, o modo RevGás usa o banco local `data/bot-revgas.db` para conversas, histórico e atendimentos. Se definir `BOT_DB_PATH` manualmente, use um banco exclusivo da operação real.
 
-**5.3 Avisos de status:** peça ao fornecedor do RevGás/App Entrega para, a cada mudança de status, fazer:
-`POST https://SEU-DOMINIO/webhooks/erp/status` com cabeçalho `X-Webhook-Token: <ERP_WEBHOOK_TOKEN>` e corpo `{"numero_pedido": "PED-1006"}`.
+O bot usa o estoque e os IDs dos produtos retornados pela API. O contrato público de produtos não expõe o preço de venda. Mantenha os preços aprovados da loja nesse arquivo e reinicie o bot após uma alteração. A venda automática suporta Pix, dinheiro e cartão conforme as formas ativas da filial. A equipe trata trocas, compra com boleto e pedidos com taxa de entrega fora de zero. Para segunda via, o bot consulta faturas já emitidas e verifica o titular antes de buscar o link. Sem um período explícito, as listagens de vendas e boletos consultam os últimos 365 dias.
+
+Com o catálogo preenchido, rode novamente o diagnóstico e valide pelo WhatsApp de teste a identificação, a consulta de preço e estoque, a confirmação do pedido e o registro da venda na central. O `POST /sales` na URL de produção grava uma venda. Combine com a RevGás uma conta de teste para homologar as escritas. A especificação pública marca o servidor de homologação listado como “Não utilizar”. [Contrato RevGás v1](https://revgas.stoplight.io/docs/revgas-api/9ba9854ecfbc9-rev-gas)
+
+**Avisos de status.** O bot aceita `POST /webhooks/erp/status` com `X-Webhook-Token` igual a `ERP_WEBHOOK_TOKEN` e JSON `{"numero_pedido":"PED-123"}`. Configure o envio em uma ponte compatível se a operação contar com esse serviço. O contrato público de vendas consultado não inclui webhook de entrega.
 
 ### Etapa 6 — WhatsApp oficial (Cloud API da Meta)
 > Os nomes dos menus da Meta mudam com frequência; se algum não bater, procure pelo nome em inglês entre parênteses.
@@ -271,7 +263,7 @@ python scripts/verificar_config.py --online      # confira se há linhas [ERRO]
 | `LLM_TIMEOUT_SEGUNDOS`, `AGENTE_MAX_PASSOS`, `RERANK_COM_LLM` | não | ajustes finos da IA |
 | `EMBEDDINGS_PROVEDOR`, `EMBEDDINGS_MODELO`, `EMBEDDINGS_API_KEY`, `EMBEDDINGS_BASE_URL` | não | Etapa 8 |
 | `ERP_MODO` | sim | `mock` → `revgas` |
-| `ERP_BASE_URL`, `ERP_AUTH_TIPO`, `ERP_TOKEN`, `ERP_APIKEY_HEADER`, `ERP_USUARIO`, `ERP_SENHA` | p/ revgas | fornecedor do RevGás (Etapa 5) |
+| `ERP_BASE_URL`, `ERP_TOKEN` | p/ revgas | fornecedor do RevGás (Etapa 5) |
 | `ERP_TIMEOUT_SEGUNDOS` | não | padrão 15 |
 | `ERP_WEBHOOK_TOKEN` | recomendado | vocês inventam (Etapa 5.3) |
 | `SQL_URL`, `SQL_DIALETO`, `SQL_TIMEOUT_SEGUNDOS` | não | Etapa 7 |

@@ -156,9 +156,7 @@ A Evolution recebe mensagens por webhook e envia as opções como texto numerado
 - `ERP_MODO=revgas`: API HTTP real (`app/erp/revgas_http.py`).
 
 ### 5.2 Como o bot fala com o RevGás
-O bot só usa as operações do contrato `app/erp/base.py` (buscar cliente por telefone/CPF, endereços, produtos, filiais, preço, estoque, criar/consultar/listar/cancelar pedido, títulos/2ª via, abrir troca). O adaptador HTTP lê **caminhos, parâmetros e nomes de campos** de `config/erp_revgas.json` — **os valores atuais são suposições** e precisam ser ajustados com a documentação da API do RevGás (ver Guia, Etapa 5). Não é preciso mexer em código se a API for REST/JSON comum.
-
-> Se o RevGás **não tiver API**, as alternativas são: (a) acesso somente leitura ao banco + uma API da central de pedidos para gravar; ou (b) integração pelo fornecedor. Isso precisa ser confirmado com vocês/fornecedor (ver Guia).
+O adaptador usa os endpoints oficiais da RevGás v1 para clientes, estabelecimentos, produtos, vendas e contas a receber. Preencha a chave `ERP_TOKEN` no `.env` e configure os bairros, IDs de produtos e preços da loja em `config/erp_revgas.json`. A seção **Etapa 5** do [guia de configuração](GUIA_DE_CONFIGURACAO.md#etapa-5--erp-revgás) mostra o formato e o diagnóstico online.
 
 ### 5.3 Avisos automáticos de status (central / app de entrega → cliente)
 Quando o pedido muda de situação, o ERP ou o App Entrega chama:
@@ -278,7 +276,7 @@ Antes de ativar o envio real pela Evolution, confira os itens abaixo.
 - [ ] Webhook da Evolution alcança o servidor do bot, com `EVOLUTION_WEBHOOK_TOKEN` preenchido.
 - [ ] Em sandbox, o menu chegou à fila de saída e a opção numérica abriu o fluxo esperado.
 - [ ] `PAINEL_ATENDENTE_SENHA` forte; `SIMULADOR_ATIVO=false`.
-- [ ] Equipe acompanha a fila em `/atendente`. Valide o RevGás em homologação antes de ativar consultas e pedidos reais.
+- [ ] Equipe acompanha a fila em `/atendente`. Valide a chave e as permissões do RevGás e teste a escrita em uma conta de teste autorizada.
 - [ ] `python scripts/verificar_config.py --online` sem erros.
 - [ ] Conteúdo real em `knowledge/` e regras reais em `config/regras_comerciais.json`.
 - [ ] Banco do bot: SQLite atende **uma instância**. Para várias instâncias/alto volume, migrar `app/db.py` para PostgreSQL.
@@ -308,7 +306,7 @@ Os erros de envio aparecem no log com a explicação em português (`app/canais/
 
 ## 14. Limitações conhecidas
 
-- **Integração RevGás não validada**: o mapeamento em `config/erp_revgas.json` é um modelo; depende da documentação real da API.
+- **Validação em conta real** depende da chave, da configuração comercial da loja e do canal WhatsApp.
 - **Busca vetorial local** usa n-gramas de caracteres (tolera erro de digitação, mas não entende sinônimos distantes). Para semântica de verdade: `EMBEDDINGS_PROVEDOR=openai`.
 - **Sem IA**, perguntas fora dos padrões previstos caem no menu/handoff.
 - **Áudio e imagem** não são interpretados (o bot pede para escrever). Transcrição de áudio pode ser adicionada.

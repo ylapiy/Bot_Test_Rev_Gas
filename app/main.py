@@ -31,6 +31,7 @@ from app.core.orquestrador import obter_orquestrador
 from app.erp import obter_erp, redefinir_erp
 
 logging.basicConfig(level=config.log_nivel, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger("app")
 ESTATICOS = Path(__file__).parent / "static"
 
@@ -97,8 +98,10 @@ def exige_simulador(request: Request, x_painel_senha: str | None = Header(defaul
     if not config.simulador_ativo:
         raise HTTPException(404, "Simulador desligado (SIMULADOR_ATIVO=false)")
     # fora do computador local, o simulador pede a senha do painel (ele permite "ser" qualquer telefone)
-    if not _local(request) and not (x_painel_senha and hmac.compare_digest(x_painel_senha, config.atendente_senha)):
-        raise HTTPException(401, "Simulador acessado de fora do servidor: informe a senha do painel")
+    if (config.erp_modo == "revgas" or not _local(request)) and not (
+        x_painel_senha and hmac.compare_digest(x_painel_senha, config.atendente_senha)
+    ):
+        exige_painel(request, x_painel_senha)
 
 
 # ============================================================================ páginas

@@ -3,7 +3,7 @@
 O bot só conversa com o ERP através destes métodos. Hoje existem duas
 implementações:
   - ErpMock (dados de demonstração em SQLite) -> funciona sem nada configurado
-  - ErpRevGasHttp (API HTTP do RevGás)       -> precisa da documentação da API
+  - ErpRevGasHttp (API HTTP do RevGás)       -> API RevGás v1
 
 Todos os métodos devolvem dicionários "normalizados" (mesmas chaves), assim
 o restante do bot não depende do formato do ERP.
@@ -27,6 +27,7 @@ class ErroERP(Exception):
 
 class ErpCliente(ABC):
     nome = "base"
+    endereco_avulso_na_venda = False
 
     # ---------- clientes ----------
     @abstractmethod
@@ -70,7 +71,7 @@ class ErpCliente(ABC):
     @abstractmethod
     def criar_pedido(self, cliente_id, endereco_id, itens: list[dict], forma_pagamento: str,
                      filial_id, troco_para: float | None = None, observacao: str = "",
-                     canal: str = "whatsapp") -> dict: ...
+                     canal: str = "whatsapp", *, endereco_avulso: dict | None = None) -> dict: ...
 
     @abstractmethod
     def consultar_pedido(self, numero: str) -> dict | None: ...
@@ -87,7 +88,7 @@ class ErpCliente(ABC):
     def listar_titulos(self, cliente_id, status: str | None = None) -> list[dict]: ...
 
     @abstractmethod
-    def segunda_via(self, titulo_numero: str) -> dict | None: ...
+    def segunda_via(self, titulo_numero: str, *, cliente_id=None) -> dict | None: ...
 
     # ---------- pós-venda ----------
     @abstractmethod

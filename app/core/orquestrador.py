@@ -418,10 +418,12 @@ class Orquestrador:
             t.rastreio.add("Conversation Memory", "produto em contexto usado no pedido", t.conv.slots["produto"])
         fluxos.iniciar_pedido(t)
 
-    def _filial_para_preco(self, t: Turno) -> tuple[int, str | None]:
+    def _filial_para_preco(self, t: Turno) -> tuple[int | None, str | None]:
         fid = t.ent.get("filial_id") or t.conv.slots.get("filial_id")
         if fid:
             return fid, None
+        if config.erp_modo == "revgas":
+            return None, None
         return 1, "Preço da filial Centro — pode variar um pouco conforme o bairro."
 
     def h_preco(self, t: Turno) -> None:
@@ -435,7 +437,7 @@ class Orquestrador:
         for cod in prods[:4]:
             r = ferramentas.executar("consultar_preco", {"produto_codigo": cod, "filial_id": fid}, t.ctx)
             if r.get("erro"):
-                linhas.append(f"• {NOMES_PRODUTO.get(cod, cod)}: não encontrei no sistema agora")
+                linhas.append(f"• {NOMES_PRODUTO.get(cod, cod)}: {r['erro']}")
             else:
                 filial_nome = r.get("filial_nome")
                 linhas.append(f"• *{r['produto_nome']}*: {moeda(r['preco'])}")
@@ -545,9 +547,10 @@ class Orquestrador:
         if b.get("erro"):
             t.responder("Não encontrei esse boleto no seu cadastro.")
             return
-        aviso = "\n⚠️ Este boleto está vencido: o valor atualizado aparece no link." if b.get("status") == "vencido" else ""
-        t.responder(f"🧾 2ª via do boleto *{b['numero']}*\nValor: {moeda(b['valor'])} — vencimento {_data(b['vencimento'])}{aviso}\n\n"
-                    f"Linha digitável:\n{b.get('linha_digitavel')}\n\nLink: {b.get('link')}")
+        aviso = "\n⚠️ Este boleto está vencido." if b.get("status") == "vencido" else ""
+        linha = f"\n\nLinha digitável:\n{b['linha_digitavel']}" if b.get("linha_digitavel") else ""
+        link = f"\n\nLink: {b['link']}" if b.get("link") else ""
+        t.responder(f"🧾 2ª via do boleto *{b['numero']}*\nValor: {moeda(b['valor'])} — vencimento {_data(b['vencimento'])}{aviso}{linha}{link}")
         t.cls = {**t.cls, "intencao": "boleto"}
 
     def h_troca(self, t: Turno) -> None:
