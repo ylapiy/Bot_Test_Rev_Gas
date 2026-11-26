@@ -1,4 +1,0 @@
-{
-  "_instrucoes": "Preencha filiais com o ID do estabelecimento. Para cada filial, informe bairros e produtos. Cada código do bot (por exemplo, P13) recebe id do produto RevGás e preco unitário em reais.",
-  "filiais": {}
-}
