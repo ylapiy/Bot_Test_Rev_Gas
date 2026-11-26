@@ -1,10 +1,4 @@
--- =====================================================================
---  RevGás – TODAS as tabelas, com TODAS as colunas, numa consulta só
---  Rode este arquivo uma vez. Depois:
---     select * from revgas.v_tabelas_completas;
---  Cada linha = um registro de alguma tabela; a coluna "dados" traz todas as colunas dele.
---  Telefone mascarado e hash do PIN removido.
--- =====================================================================
+
 create or replace view revgas.v_tabelas_completas with (security_invoker = on) as
 select tabela, id, dados
 from (
